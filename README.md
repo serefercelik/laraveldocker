@@ -1,2 +1,2 @@
 # laraveldocker
-Laravel with Docker
+Laravel Docker

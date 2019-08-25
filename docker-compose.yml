@@ -1,0 +1,123 @@
+version: '3.5'
+
+services:
+  laravel-app:
+    build:
+      context: '.'
+      args:
+        uid: ${UID}
+    container_name: laravel-app
+    ports:
+      - 8000:80
+    environment:
+      - APACHE_RUN_USER=#1000
+      - APACHE_RUN_GROUP=#1000
+    volumes:
+      - .:/var/www/html
+      - ./logs/apache2:/var/log/apache2
+    links:
+      - redis-laravel
+      - laravel-mysql-db
+    #  - laravel-elasticsearch
+      - laravel-phpmyadmin
+    networks:
+      backend:
+        aliases:
+          - app
+
+  laravel-mysql-db:
+    image: mysql:5.7
+    command: --default-authentication-plugin=mysql_native_password
+    container_name: laravel-mysql-db
+    volumes:
+      - ./run/var:/var/lib/mysql
+      - ./logs/mysql:/var/log/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=securerootpassword
+      - MYSQL_DATABASE=${DB_DATABASE}
+      - MYSQL_USER=${DB_USERNAME}
+      - MYSQL_PASSWORD=${DB_PASSWORD}
+    networks:
+      backend:
+        aliases:
+          - laravel-mysql-db
+
+  redis-laravel:
+    container_name: redis-laravel
+    image: redis
+    ports:
+      - "1234:1234"
+    networks:
+      backend:
+        aliases:
+          - redis-laravel
+
+  laravel-phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: laravel-phpmyadmin
+    links:
+        - laravel-mysql-db:laravel-mysql-db
+    environment:
+      - MYSQL_ROOT_PASSWORD=securerootpassword
+      - PMA_HOST=laravel-mysql-db
+    ports:
+      - "2525:80"
+    networks:
+      backend:
+        aliases:
+          - laravel-mysql-db
+
+
+
+  elasticsearch:
+    build:
+      context: ./shellCommands/tools/elk/elasticsearch/
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - ./shellCommands/tools/elk/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      ES_JAVA_OPTS: "-Xmx256m -Xms256m"
+      ELASTIC_PASSWORD: changeme
+    networks:
+      - backend
+
+  logstash:
+    build:
+      context: ./shellCommands/tools/elk/logstash/
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - ./shellCommands/tools/elk/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./shellCommands/tools/elk/logstash/pipeline:/usr/share/logstash/pipeline:ro
+    ports:
+      - "5000:5000"
+      - "9600:9600"
+    environment:
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - backend
+    depends_on:
+      - elasticsearch
+
+  kibana:
+    build:
+      context: ./shellCommands/tools/elk/kibana/
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - ./shellCommands/tools/elk/kibana/config/kibana.yml:/usr/share/kibana/config/kibana.yml:ro
+    ports:
+      - "5601:5601"
+    networks:
+      - backend
+    depends_on:
+      - elasticsearch
+
+  #https://github.com/schickling/dockerfiles/tree/master/beanstalkd eklenecek queueler için
+networks:
+  backend:
+    name: backend-network-laravel
